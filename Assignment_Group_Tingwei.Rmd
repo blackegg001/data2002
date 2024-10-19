@@ -1,0 +1,694 @@
+---
+title: "Simplifying Predictive Models Using Body Information: A Study on Body Fat Estimation"
+subtitle: "Group L01G02"
+author: "Ethan Cunanan, Jerry Jin, Johan Kok, Tingwei Liang, Tyler Sitchon"
+output: 
+  html_document: 
+    self_contained: true 
+    code_folding: hide 
+    code_download: true 
+    toc: true 
+    toc_float: true 
+    number_sections: true 
+---
+
+```{r}
+# hide package warning and message to keep the report concise
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+#Data Import
+library(tidyverse)
+library(knitr)
+
+data = read.table("data/bodyfat.txt", header = TRUE, sep = "\t") 
+```
+
+# Data description 
+
+First look at the data relationship
+```{r}
+library(ggplot2)
+
+ggplot(data, aes(x = Density, y = Pct.BF)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +  
+  labs(title = "Density vs Pct.BF",
+       x = "Density",
+       y = "Pct.BF") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_brewer(palette="Pastel1")
+```
+The presence of outliers necessitates the reassignment of values based on the established formula. Density is directly measured using the weight in air and the weight in water, while Pct.BF is derived from Density through the equation. This analysis emphasizes that Density is a more reliable metric; thus, we opt to reassign the value accordingly.
+
+To calculate the predicted value of Pct.BF, we utilize the formula \( \text{Pct.BF} = \frac{495}{\text{Density}} - 450 \). If the predicted Pct.BF, rounded to two decimal places, does not align with the values in the original dataset, we then adjust the Pct.BF based on the formula \( \text{Pct.BF} = 450 \). This ensures consistency and enhances the accuracy of our predictions.
+```{r}
+data$Predicted_Pct_BF <- round(495 / data$Density - 450, 2)
+
+
+data$Pct.BF <- ifelse(data$Predicted_Pct_BF != round(data$Pct.BF, 2), 
+                      data$Predicted_Pct_BF, 
+                      data$Pct.BF)
+
+data$Predicted_Pct_BF <- NULL
+```
+Furthermore, two anomalies were identified in the dataset. According to the original experiment conducted by Johnson (1996), the body density of the human body typically falls within the range of 0.900 to 1.100 g/cm³. However, two data points were found to lie outside this range, suggesting potential errors in manual recording. Consequently, these two outlier data points were removed from the analysis to maintain the integrity of the dataset.
+```{r}
+data <- data[data$Density >= 0.900 & data$Density <= 1.100, ]
+```
+
+Recheck the graph.
+```{r}
+ggplot(data, aes(x = Density, y = Pct.BF)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Density vs Pct.BF",
+       x = "Density",
+       y = "Pct.BF") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_brewer(palette="Pastel1")
+```
+View relationships with other variables
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+plots <- list()
+
+variables <- c("Age", "Weight", "Height", "Neck", "Chest", 
+               "Abdomen", "Waist", "Hip", "Thigh", "Knee", 
+               "Ankle", "Bicep", "Forearm", "Wrist")
+
+for (var in variables) {
+  p <- ggplot(data, aes_string(x = var, y = "Pct.BF")) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +  
+    labs(x = var,
+         y = "Pct.BF") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5))  
+  plots[[var]] <- p
+}
+
+grid.arrange(grobs = plots, ncol = 5)
+```
+
+
+**1. Strong Positive Correlation**
+
+The following variables exhibit a significant positive correlation with percent body fat, indicating that as their values increase, so does the percentage of body fat:
+
+- **Weight**: The points are densely distributed, and the regression line has a steep slope, indicating a significant positive correlation.  
+
+- **Abdomen**: The points are tightly clustered, and the regression line has a steep slope, making it one of the strongest variables related to body fat percentage.  
+
+- **Chest**: There is a strong positive correlation with body fat percentage, and the data points are also relatively concentrated.
+
+**2. Weak Positive Correlation**
+
+The following variables show a positive correlation with body fat percentage, although this correlation is weak:
+
+- **Neck**: There is a positive correlation with body fat percentage, but the points are slightly scattered, indicating that the correlation is not as strong as that of weight and abdominal circumference.  
+- **Waist**: Although there is a positive correlation trend, the data points are relatively dispersed, suggesting that the correlation between waist circumference and body fat percentage is weaker than that of abdominal circumference.  
+
+- **Hip**: There is a positive correlation, but the points are somewhat scattered.  
+
+- **Thigh**: There is a positive correlation, but the data points are widely distributed, indicating a weaker correlation.  
+
+- **Knee**: The slope of the regression line is small, with a scattered distribution of points, showing a weak correlation.  
+
+- **Bicep**: The points are relatively scattered, displaying a positive correlation, but the correlation is weak.  
+
+- **Forearm**: There is a positive correlation trend, but it is not as significant as with other measurements.  
+
+- **Wrist**: The positive correlation with body fat percentage is weak, and the data points are quite dispersed.
+
+**3. No Significant or Negative Correlation**
+
+Certain variables exhibit no significant correlation with body fat percentage, and some may even show a slight negative correlation:
+
+- **Height**: There is almost no correlation, with a flat regression line and a very scattered distribution of data points.
+
+- **Ankle**: There is nearly no correlation with body fat percentage, and the data points are extremely dispersed.
+
+A heat map was then used to see the correlation between the variables
+```{r}
+library(ggplot2)
+library(reshape2)
+
+cor_matrix <- cor(data, use = "complete.obs")
+
+melted_cor_matrix <- melt(cor_matrix)
+
+ggplot(data = melted_cor_matrix, aes(x = Var1, y = Var2, fill = value)) + 
+  geom_tile(color = "white") + 
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1, 1), space = "Lab", 
+                       name = "Correlation") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 10, hjust = 1)) + 
+  coord_fixed() +  
+  geom_text(aes(Var1, Var2, label = sprintf("%.2f", round(value, 2))), 
+            color = "black", size = 2) + 
+  labs(x = '', y = '') 
+```
+**Main Correlations Between Variables**
+
+- **Pct.BF and Other Variables**
+Body fat percentage shows a strong positive correlation with several body measurement variables: abdominal circumference (0.91), waist circumference (0.91), and hip circumference (0.82). These findings suggest a significant relationship between body fat and the sizes of these anatomical regions. Additionally, the correlation between weight (0.89) and body fat percentage is noteworthy, indicating that individuals with higher body fat often also weigh more.
+
+- **Age**
+The correlation between age and various measurements is generally low; however, there is a moderate correlation with body fat percentage (0.29), suggesting that body fat may tend to increase with age.
+
+- **Height**
+Height shows low correlations with most variables, except for a higher correlation with weight (0.53). This indicates that height has little relationship with body fat or other body measurements, although taller individuals generally tend to weigh more.
+
+- **Weight**
+Weight exhibits a strong correlation with abdominal circumference (0.91), hip circumference (0.85), and chest circumference (0.88). This indicates a significant relationship between the sizes of these areas and overall body weight.
+
+- **Potential Multicollinearity Issues**
+The high correlation between weight and hip, abdominal, and chest circumferences raises concerns about multicollinearity. In particular, the correlation between abdominal circumference and weight (0.91) and the correlation between hip circumference and weight (0.85) suggest that these variables may convey similar information. Furthermore, there are also strong correlations between hip and chest circumferences (0.78) and between abdominal and chest circumferences (0.80), which further exacerbate potential multicollinearity issues in the analysis.
+
+The high correlation between weight and measurements of hip, abdomen, and chest raises concerns about multicollinearity. In particular, the correlation between abdomen and weight (0.91) and the correlation between hip and weight (0.85) suggest that these variables may convey similar information. Additionally, there are strong correlations between hip and chest (0.78) and between abdomen and chest (0.80), further exacerbating potential multicollinearity issues in the analysis.
+
+**Multicollinearity**
+Multicollinearity is a high degree of correlation between two or more independent variables, which may lead to instability and difficulty in interpreting the results of regression analysis. To detect multicollinearity, we can use Variance Inflation Factor (VIF) to assess it.
+
+The VIF results indicate a singularity between abdomen and waist **(Error: vif.default(model): there are aliased coefficients in the model)**, suggesting that these two variables are completely linearly related, leading to unstable model parameters and even making estimation impossible. In practical measurement, the waist is measured at a relatively fixed position, typically at the narrowest point just below the rib cage and above the iliac crest, with clear measurement standards. In contrast, the abdomen is measured at its widest point, which can be influenced by factors such as breathing, posture, and fat distribution, making it prone to errors. Therefore, we have decided to retain the waist data and delete the abdomen data to resolve this issue.
+```{r}
+library(car)
+
+data <- data[, !names(data) %in% "Abdomen"]
+
+model <- lm(Pct.BF ~ ., data = data)
+
+vif_values <- vif(model)
+print(vif_values)
+```
+Based on the output Variance Inflation Factor (VIF) values, we can identify which variables may be exhibiting multicollinearity issues. Typically, a VIF value exceeding 10 suggests the presence of multicollinearity, indicating that further intervention is necessary. This may involve removing highly correlated variables or employing regularization techniques, such as LASSO regression, to address the multicollinearity concerns.
+
+In the context of predicting body fat, we opted to retain the variables for Weight, Abdomen, and Hip circumference. This decision is grounded in clinical practice, where physicians frequently use weight as a primary indicator for assessing obesity risk. By retaining Weight as a variable, we enhance the accuracy of body fat estimations, particularly during individual health assessments and interventions. Furthermore, abdominal fat—especially visceral fat—has been recognized as a significant risk factor linked to various metabolic diseases, including diabetes and cardiovascular conditions. Therefore, this variable cannot be disregarded and warrants further discussion.
+
+# Experiment 1: Direct Prediction of Pct.BF Using Other Body Data
+
+## Assumption checking
+
+Comparison was done using direct and regularization (to reduce the effect of covariance) respectively
+```{r}
+library(caret)
+
+data_test1 <- data %>% select(-Density)
+
+model <- lm(Pct.BF ~ ., data = data_test1)
+```
+
+```{r}
+# residual plot
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+**1. Residuals vs. Fitted Values**
+
+The figure shows the relationship between residuals and fitted values. Ideally, the residuals should be evenly distributed around zero without any clear pattern. The plot indicates that the residuals exhibit significant fluctuations and that there is no heteroscedasticity, consistent with the assumption of homoscedasticity.
+
+**2. Q-Q Plot**
+
+The Q-Q plot is used to assess the normality of residuals. If the points closely follow the 45-degree line, it suggests that the residuals are normally distributed. The plot shows that the residuals are generally consistent with a normal distribution.
+
+**3. Scale-Location Plot**
+
+This plot displays the standardized residuals against the square root of the fitted values, used to check if the variance of the residuals is constant (i.e., homoscedasticity). Ideally, the points should be randomly distributed around the red smooth curve. The plot shows that the residual points are generally consistent with a random distribution.
+
+**4. Residuals vs. Leverage**
+
+This plot helps identify outliers and high leverage points. Cook's distance is used to assess whether a point has a significant impact on the model. The plot reveals several potentially influential points (e.g., points numbered 31 and 219) that require further investigation regarding their impact on the model, which will not be discussed here.
+
+**Concerns**
+
+Currently, the residual plots indicate that the assumptions of linear regression are generally met. However, we still face the issue of multicollinearity. To address this problem, we will employ stepwise regression, stepwise subset selection, and partial least squares methods. 
+
+```{r}
+# Using OLS as a model benchmark
+lm_model <- lm(Pct.BF ~ ., data = data_test1)
+```
+
+## Stepwise Regression and Stepwise Subset Selection
+
+The observed multicollinearity may be indicative of redundancy among the variables included in the model. To address this issue, the application of Stepwise Regression and Stepwise Subset Selection techniques can be employed as effective strategies for model simplification. These methodologies allow for the systematic identification and removal of non-essential variables, thereby enhancing the clarity and interpretability of the model while potentially mitigating the effects of autocorrelation.
+
+```{r}
+#Stepwise Subset Selection
+stepwise_model_both <- step(lm_model, direction = "both", 
+                       trace = 0) 
+summary(stepwise_model_both)
+```
+
+```{r}
+#Stepwise Regression——Backward
+stepwise_model_backward <- step(lm_model, direction = "backward", 
+                       trace = 0)
+
+summary(stepwise_model_backward)
+```
+
+```{r}
+#Stepwise Regression——Forward
+stepwise_model_forward <- step(lm_model, direction = "forward", 
+                       trace = 0)
+
+summary(stepwise_model_forward)
+```
+The implementation of 10-fold cross-validation facilitates a robust evaluation of the model's performance by systematically partitioning the dataset into ten subsets. This technique enables the calculation of Root Mean Square Error (RMSE) and R², providing essential metrics for assessing model accuracy and explanatory power. Additionally, the computation of Relative RMSE offers an intuitive framework for interpreting and comparing results, enhancing the clarity of the findings across different models and datasets.
+```{r}
+set.seed(123)
+
+rmse <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+r_squared <- function(actual, predicted) {
+  1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+}
+
+relative_rmse <- function(actual, rmse_value) {
+  rmse_value / mean(actual) * 100  
+}
+
+# 10-fold cross validation
+cross_validate_model <- function(model_formula, data) {
+  control <- trainControl(method = "cv", number = 10)
+  
+  # Perform cross-validation
+  cv_model <- train(model_formula, data = data, method = "lm", 
+                    trControl = control)
+  
+  # Get resampling results
+  resamples <- cv_model$resample
+  
+  # Calculate RMSE, R², and Relative RMSE
+  rmse_value <- mean(resamples$RMSE)
+  r2_value <- mean(resamples$Rsquared)
+  rel_rmse_value <- relative_rmse(data$Pct.BF, rmse_value)
+  
+  return(list(RMSE = rmse_value, R_squared = r2_value, Relative_RMSE = rel_rmse_value))
+}
+
+# Assuming 'train_data' contains your training dataset
+results_both <- cross_validate_model(as.formula(stepwise_model_both$call), data_test1)
+results_backward <- cross_validate_model(as.formula(stepwise_model_backward$call), data_test1)
+results_forward <- cross_validate_model(as.formula(stepwise_model_forward$call), data_test1)
+
+cat("Results for stepwise_model_both:\n")
+cat("RMSE: ", results_both$RMSE, ", R_squared: ", results_both$R_squared, ", Relative RMSE: ", results_both$Relative_RMSE, "%\n")
+
+cat("Results for stepwise_model_backward:\n")
+cat("RMSE: ", results_backward$RMSE, ", R_squared: ", results_backward$R_squared, ", Relative RMSE: ", results_backward$Relative_RMSE, "%\n")
+
+cat("Results for stepwise_model_forward:\n")
+cat("RMSE: ", results_forward$RMSE, ", R_squared: ", results_forward$R_squared, ", Relative RMSE: ", results_forward$Relative_RMSE, "%\n")
+
+
+```
+### 1. Model Summary
+- **Model 1 (Both)**:
+  - **Formula**: \( Pct.BF \sim Age + Height + Neck + Chest + Waist + Bicep + Wrist \)
+  - **Adjusted R²**: 0.7179, indicating that the model can explain about 71.79% of the variation in body fat percentage.
+  - **RMSE**: 4.367317, suggesting that the model has a relatively low prediction error.
+  - **Significant Variables**: Age, Height, Chest, Waist, Bicep, and Wrist all have a significant impact on body fat percentage, with Waist having the greatest influence (p < 2e-16).
+  
+- **Model 2 (Backward)**:
+  - **Formula**: \( Pct.BF \sim Age + Height + Neck + Chest + Waist + Bicep + Wrist \)
+  - **Adjusted R²**: 0.7223, indicating that the model can explain about 72.23% of the variation in body fat percentage.
+  - **RMSE**: 4.433432, suggesting that the model has a relatively low prediction error.
+  - **Significant Variables**: Age, Height, Chest, Waist, Bicep, and Wrist all have a significant impact on body fat percentage, with Waist having the greatest influence (p < 2e-16).
+
+- **Model 3 (Forward)**:
+  - **Formula**: \( Pct.BF \sim Age + Weight + Height + Neck + Chest + Waist + Hip + Thigh + Knee + Ankle + Bicep + Forearm + Wrist \)
+  - **Adjusted R²**: 0.7246442, indicating that the model can explain about 72.23% of the variation in body fat percentage.
+  - **RMSE**: 4.428418, showing a lower prediction error compared to the first two models.
+  - **Significant Variables**: Age, Neck, Waist, and Wrist all have a significant impact on body fat percentage, with Waist having the greatest influence (p < 2e-16).
+
+### 2. Model Comparison
+- **Goodness of Fit (R²)**: Model 3 has the highest R², indicating it performs best in explaining the variation in body fat percentage.
+- **Prediction Error (RMSE)**: Model 1 has the lowest RMSE, indicating superior performance in actual predictions compared to the other two models.
+- **Significance**: All models identified significant variables related to body fat percentage, particularly waist circumference. However, Model 3 includes additional variables such as weight and hip circumference, which have lower significance, indicating that their contribution to the model's explanatory power may be less than that of the variables in Models 1 and 2.
+
+## Generalized Least Squares (GLS)
+
+**Generalized Least Squares (GLS)** is a multivariate statistical method used for modeling and analysis, particularly suitable for situations with multicollinearity and heteroscedasticity. It effectively addresses multicollinearity by mapping high-dimensional data to a lower-dimensional space and extracting key components, thus reducing the number of variables while maintaining the explanatory power for the dependent variable. Although the heteroscedasticity in this dataset is negligible, GLS's handling of multicollinearity can enhance predictive performance.
+
+```{r}
+library(nlme)
+
+formula <- Pct.BF ~ Age + Weight + Height + Neck + Chest + 
+    Waist + Hip + Thigh + Knee + Ankle + Bicep + Forearm + Wrist
+
+# Fit a GLS model to address heteroscedasticity
+gls_model <- gls(formula, data = data_test1)
+
+summary(gls_model)
+```
+**Residual Analysis**
+The distribution of standardized residuals shows a minimum value of -3.30 and a maximum value of 2.18, indicating that the model has significant prediction deviations at certain data points. The residual standard error is 4.34, suggesting that the model's prediction error is relatively low.
+
+The AIC is 1484.03, and the BIC is 1535.93. These relatively low values of the information criteria indicate that the model fits well.
+
+```{r}
+# Prediction function
+predict_gls <- function(model, new_data) {
+  # Make predictions
+  predictions <- predict(model, newdata = new_data)
+  return(predictions)
+}
+
+# Make predictions
+predictions <- predict_gls(gls_model, data_test1)
+
+# Calculate evaluation metrics
+rmse_value <- rmse(data_test1$Pct.BF, predictions)
+rel_rmse_value <- relative_rmse(data_test1$Pct.BF, rmse_value)
+r2_value <- r_squared(data_test1$Pct.BF, predictions)
+
+# Output results
+cat("Results for GLS model:\n")
+cat("RMSE: ", rmse_value, ", R_squared: ", r2_value, ", Relative RMSE: ", rel_rmse_value, "%\n")
+
+cat("Results for stepwise_model_forward:\n")
+cat("RMSE: ", results_forward$RMSE, ", R_squared: ", results_forward$R_squared, ", Relative RMSE: ", results_forward$Relative_RMSE, "%\n")
+
+```
+The GLS model has a lower RMSE value, indicating higher predictive accuracy on the test set. Additionally, a higher R² value suggests that the GLS model can better explain the variability of the dependent variable.
+
+The GLS model effectively reduces the error fluctuations between the dependent and independent variables, which may be one reason for its superior predictive accuracy compared to the stepwise forward model. The stepwise forward model does not specifically address the issue of heteroscedasticity, which may lead to poorer performance on certain data points. Additionally, the issue of multicollinearity could also impact the variable selection and predictive ability of the stepwise forward model, while the GLS model mitigates this effect through appropriate weight adjustments.
+
+## Bootstrapping
+
+Regression analysis provides valuable insights into the relationships between variables and helps estimate the impact of predictor factors on the outcome variable. However, this method carries the risk of overfitting. In contrast, bootstrapping is a resampling technique that generates an empirical distribution of estimated parameters by repeatedly sampling from the original dataset.
+```{r}
+# Load necessary packages
+library(caret)
+library(nlme)  # For GLS
+
+# Ensure the target variable is numeric
+data_test1$Pct.BF <- as.numeric(data_test1$Pct.BF)
+
+# Create a custom function to calculate adjusted R²
+adjusted_r_squared <- function(model, data) {
+  if ("gls" %in% class(model)) {
+    r2 <- 1 - sum(residuals(model)^2) / sum((data$Pct.BF - mean(data$Pct.BF))^2)
+  } else {
+    r2 <- summary(model)$r.squared
+  }
+  
+  n <- nrow(data) 
+  p <- length(model$coefficients) - 1 
+  adj_r2 <- 1 - (1 - r2) * (n - 1) / (n - p - 1)
+  return(adj_r2)
+}
+
+# Bootstrap sampling evaluation function
+bootstrap_eval <- function(model_formula, data, model_type = "lm", n_bootstrap = 1000) {
+  adj_r2_values <- numeric(n_bootstrap)
+  rmse_values <- numeric(n_bootstrap)
+  
+  for (i in 1:n_bootstrap) {
+    # Bootstrap sampling
+    bootstrap_sample <- data[sample(1:nrow(data), replace = TRUE), ]
+    
+    if (model_type == "lm") {
+      # Linear model
+      model <- lm(model_formula, data = bootstrap_sample)
+      adj_r2_values[i] <- adjusted_r_squared(model, bootstrap_sample)
+      
+      # Calculate RMSE
+      predictions <- predict(model, newdata = bootstrap_sample)
+      rmse_values[i] <- sqrt(mean((bootstrap_sample$Pct.BF - predictions)^2))
+      
+    } else if (model_type == "gls") {
+      # GLS model
+      model <- gls(model_formula, data = bootstrap_sample)
+      adj_r2_values[i] <- adjusted_r_squared(model, bootstrap_sample)
+      
+      # Calculate RMSE
+      predictions <- predict(model, newdata = bootstrap_sample)
+      rmse_values[i] <- sqrt(mean((bootstrap_sample$Pct.BF - predictions)^2))
+    } 
+  }
+  
+  return(list(adj_r2 = adj_r2_values, rmse = rmse_values))
+}
+
+# Model formula
+gls_formula <- Pct.BF ~ Age + Weight + Height + Neck + Chest + 
+    Waist + Hip + Thigh + Knee + Ankle + Bicep + Forearm + Wrist
+
+# Evaluate five models
+n_bootstrap <- 1000
+results_both_boot <- bootstrap_eval(as.formula(stepwise_model_both$call), data_test1, "lm", n_bootstrap)
+results_backward_boot <- bootstrap_eval(as.formula(stepwise_model_backward$call), data_test1, "lm", n_bootstrap)
+results_forward_boot <- bootstrap_eval(as.formula(stepwise_model_forward$call), data_test1, "lm", n_bootstrap)
+results_gls_boot <- bootstrap_eval(gls_formula, data_test1, "gls", n_bootstrap)
+
+# Calculate mean and standard deviation for adjusted R² and RMSE
+results <- data.frame(
+  Model = c("stepwise_model_both", "stepwise_model_backward", "stepwise_model_forward", "gls_model"),
+  Mean_Adjusted_R2 = c(mean(results_both_boot$adj_r2), mean(results_backward_boot$adj_r2), mean(results_forward_boot$adj_r2), mean(results_gls_boot$adj_r2)),
+  SD_Adjusted_R2 = c(sd(results_both_boot$adj_r2), sd(results_backward_boot$adj_r2), sd(results_forward_boot$adj_r2), sd(results_gls_boot$adj_r2)),
+  Mean_RMSE = c(mean(results_both_boot$rmse), mean(results_backward_boot$rmse), mean(results_forward_boot$rmse), mean(results_gls_boot$rmse)),
+  SD_RMSE = c(sd(results_both_boot$rmse), sd(results_backward_boot$rmse), sd(results_forward_boot$rmse), sd(results_gls_boot$rmse))
+)
+
+# Output results
+print(results)
+
+```
+In both the **cross-validation results** and **resampling results**, the **gls_model** exhibits the best predictive ability, indicating that the heteroscedasticity in the dataset significantly affects the prediction of body fat percentage. The **stepwise_model_forward** shows notable improvement in the resampling evaluation, approaching the performance of the **gls_model**, which suggests its effectiveness in explaining and predicting body fat percentage. However, its results in cross-validation appear somewhat average, possibly due to cross-validation not fully revealing the model's potential overfitting issues. During the resampling process, the model may have leveraged more sample information, reducing the randomness introduced by data partitioning in cross-validation, thus achieving more robust predictive capability. Therefore, among the models mentioned, **Generalized Least Squares (gls_model)** can be considered the most suitable choice for predicting body fat in this dataset.
+
+However, it is important to note the issue of model interpretability. While the **gls_model** performs well in terms of predictive ability, its complexity may make it less interpretable compared to simpler models. This could be a limitation when trying to understand the relationships between predictors and body fat percentage. Therefore, when choosing a model, one must balance predictive accuracy with the ability to explain the results in a meaningful way.
+
+# Experiment 2: Direct Prediction of Pct.BF Using derived variables
+
+## Introducing derived variables
+Additionally, introducing derived variables can enhance model predictive performance, simplify model complexity, reduce multicollinearity, and improve both interpretability and generalizability. Derived variables integrate information from multiple original variables, allowing the model to capture complex nonlinear relationships and better reflect physiological characteristics, thereby improving prediction accuracy. Additionally, they possess clear physical or biological meaning, making the results easier to interpret. Moreover, derived variables can increase model robustness, demonstrating greater stability in the presence of noise or outliers.
+
+In this context, we can introduce two commonly utilized derived variables:
+
+**BMI (Body Mass Index)**: 
+  
+$$ \text{BMI} = \frac{\text{Weight (kg)}}{\text{Height}^2 \, \text{(m}^2\text{)}} $$ 
+   
+   This variable serves as an indicator of an individual's overall body composition and shape, providing a standardized measure to assess weight relative to height.
+
+**WHR (Waist-to-Hip Ratio)**:  
+
+$$ \text{WHR} = \frac{\text{Waist Circumference}}{\text{Hip Circumference}} $$
+   The waist-to-hip ratio is particularly relevant in the context of obesity, as it provides insights into abdominal fat distribution and is associated with various health risks linked to metabolic disorders.
+```{r}
+data2 <- data %>%
+  mutate(
+    BMI = (Weight * 703) / (Height^2),
+    WHR = Waist / Hip,
+  )%>%
+  select(-Weight, -Height, -Waist, -Hip)
+```
+
+```{r}
+library(car)
+
+model2 <- lm(Pct.BF ~ ., data = data2)
+
+vif_values2 <- vif(model2)
+
+print(vif_values2)
+```
+After introducing the derived variables, multicollinearity has been well controlled.
+```{r}
+library(caret)
+
+data_test2 <- data2 %>% select(-Density)
+
+model2 <- lm(Pct.BF ~ ., data = data_test2)
+```
+
+## Repeated Experiments
+```{r}
+# Using OLS as a model benchmark
+lm_model2 <- lm(Pct.BF ~ ., data = data_test2)
+```
+
+```{r}
+#Stepwise Subset Selection
+stepwise_model_both2 <- step(lm_model2, direction = "both", 
+                       trace = 0) 
+summary(stepwise_model_both2)
+```
+
+```{r}
+#Stepwise Regression——Backward
+stepwise_model_backward2 <- step(lm_model2, direction = "backward", 
+                       trace = 0)
+
+summary(stepwise_model_backward2)
+```
+
+```{r}
+#Stepwise Regression——Forward
+stepwise_model_forward2 <- step(lm_model2, direction = "forward", 
+                       trace = 0)
+
+summary(stepwise_model_forward2)
+```
+```{r}
+set.seed(123)
+results_both2 <- cross_validate_model(as.formula(stepwise_model_both2$call), data_test2)
+results_backward2 <- cross_validate_model(as.formula(stepwise_model_backward2$call), data_test2)
+results_forward2 <- cross_validate_model(as.formula(stepwise_model_forward2$call), data_test2)
+```
+
+```{r}
+library(nlme)
+
+formula2 <- Pct.BF ~ Age + Neck + Chest + Thigh + Knee + Ankle + 
+    Bicep + Forearm + Wrist + BMI + WHR
+
+# Fit a GLS model to address heteroscedasticity
+gls_model2 <- gls(formula2, data = data_test2)
+
+summary(gls_model2)
+```
+```{r}
+# Make predictions
+predictions2 <- predict_gls(gls_model2, data_test2)
+
+# Calculate evaluation metrics
+rmse_value2 <- rmse(data_test2$Pct.BF, predictions2)
+rel_rmse_value2 <- relative_rmse(data_test2$Pct.BF, rmse_value2)
+r2_value2 <- r_squared(data_test2$Pct.BF, predictions2)
+```
+
+
+
+##Compared with Experiment 1
+```{r}
+results_table <- data.frame(
+  Model = c("stepwise_model_both", "stepwise_model_backward", "stepwise_model_forward", "GLS model"),
+  RMSE_Model1 = c(results_both$RMSE, results_backward$RMSE, results_forward$RMSE, 
+                  rmse_value),
+  RMSE_Model2 = c(results_both2$RMSE, results_backward2$RMSE, results_forward2$RMSE, 
+                  rmse_value2),
+  
+  R_squared_Model1 = c(results_both$R_squared, results_backward$R_squared, 
+                       results_forward$R_squared, r2_value),
+  R_squared_Model2 = c(results_both2$R_squared, results_backward2$R_squared, 
+                       results_forward2$R_squared, r2_value2),
+  
+  Relative_RMSE_Model1 = c(results_both$Relative_RMSE, results_backward$Relative_RMSE, 
+                            results_forward$Relative_RMSE, rel_rmse_value),
+  Relative_RMSE_Model2 = c(results_both2$Relative_RMSE, results_backward2$Relative_RMSE, 
+                            results_forward2$Relative_RMSE, rel_rmse_value2)
+)
+
+print(results_table)
+```
+
+```{r}
+# Load necessary packages
+library(caret)
+library(nlme)  # For GLS
+
+# Ensure the target variable is numeric
+data_test2$Pct.BF <- as.numeric(data_test2$Pct.BF)
+
+# Model formula
+gls_formula <- Pct.BF ~ Age + Weight + Height + Neck + Chest + 
+    Waist + Hip + Thigh + Knee + Ankle + Bicep + Forearm + Wrist
+
+# Evaluate five models
+n_bootstrap <- 1000
+results_both_boot2 <- bootstrap_eval(as.formula(stepwise_model_both2$call), data_test2, "lm", n_bootstrap)
+results_backward_boot2 <- bootstrap_eval(as.formula(stepwise_model_backward2$call), data_test2, "lm", n_bootstrap)
+results_forward_boot2 <- bootstrap_eval(as.formula(stepwise_model_forward2$call), data_test2, "lm", n_bootstrap)
+results_gls_boot2 <- bootstrap_eval(gls_formula, data_test1, "gls", n_bootstrap)
+
+# Calculate mean and standard deviation for adjusted R² and RMSE
+results2 <- data.frame(
+  Model = c("stepwise_model_both", "stepwise_model_backward", "stepwise_model_forward", "gls_model"),
+  Mean_Adjusted_R2 = c(mean(results_both_boot2$adj_r2), mean(results_backward_boot2$adj_r2), mean(results_forward_boot2$adj_r2), mean(results_gls_boot2$adj_r2)),
+  SD_Adjusted_R2 = c(sd(results_both_boot2$adj_r2), sd(results_backward_boot2$adj_r2), sd(results_forward_boot2$adj_r2), sd(results_gls_boot2$adj_r2)),
+  Mean_RMSE = c(mean(results_both_boot2$rmse), mean(results_backward_boot2$rmse), mean(results_forward_boot2$rmse), mean(results_gls_boot2$rmse)),
+  SD_RMSE = c(sd(results_both_boot2$rmse), sd(results_backward_boot2$rmse), sd(results_forward_boot2$rmse), sd(results_gls_boot2$rmse))
+)
+
+# Output results
+print(results2)
+
+```
+
+Although Model 2 introduces BMI and WHR, theoretically enhancing the model's predictive ability, it actually leads to a decline in performance (only GLS shows a slight improvement after bootstrapping). This may be because the added variables do not provide sufficient additional information to the model and instead increase noise or complexity.
+
+Specifically, BMI cannot distinguish between fat and other components, such as muscle. For example, individuals with well-developed muscles may have a high BMI, but their body fat percentage could be low. Thus, in certain groups (e.g., athletes or the elderly), BMI may have poor predictive ability, resulting in suboptimal model performance. WHR reflects the distribution of fat, particularly abdominal fat, but its explanatory power regarding overall fat is limited. It mainly indicates differences in fat distribution rather than total fat.
+
+In modeling, body fat percentage, as the target variable, has high explanatory capability and may encompass many factors that BMI or WHR indirectly reflect. When introducing BMI and WHR into the model, the information may be insufficient, leading to reduced model performance. Additionally, BMI and WHR are derived from original variables such as height, weight, waist circumference, and hip circumference, which are already included in the model. Therefore, these derived variables may not provide additional information or help capture complex relationships better.
+
+As a result, these derived variables may not add much nonlinear information to the model. In this case, while the model's complexity and interpretability may improve, the overall predictive performance does not show significant enhancement.
+
+This also highlights the robustness and superior predictive capability of GLS. By utilizing a weighted covariance matrix, it can more accurately estimate parameters and reduce estimation uncertainty, especially in the presence of correlations or other complex relationships in the data. Future research could explore alternative transformations or derived features that can provide more unique information to enhance the overall performance of the model.
+
+# Conclusion
+
+The research findings indicate that Generalized Least Squares (GLS) offers the best predictive performance for body fat percentage, demonstrating greater robustness and being less affected by the introduction of new variables. Therefore, it is recommended that future studies build upon GLS, as the accuracy and robustness of body composition predictions are crucial.
+
+Regarding derived variables, BMI, WHR, and body fat percentage each have their practical significance and academic value in different contexts. In health management and clinical applications, BMI, WHR, and body fat percentage play distinct roles. BMI is suitable for large-scale epidemiological studies, while WHR holds greater reference value in personal health risk assessments. However, when applying these metrics in statistical modeling, it is essential to carefully evaluate whether they provide sufficient incremental information for the model and whether they maintain consistent interpretability across different populations. The increase in noise and complexity in modeling may stem from the nonlinear relationships between BMI, WHR, and body fat percentage, as well as inadequate explanations of these relationships.
+
+# Limitations and Future Directions
+
+## Limitations
+
+1. **Limitations of Linear Regression**:
+   Although linear regression can be used to establish a baseline model in this study, it assumes linear relationships among all variables. Body measurement data often exhibit complex nonlinear characteristics, making it difficult for linear regression to capture the true data patterns and nonlinear interactions among variables.
+
+2. **Sample Representativeness Issues**:
+   The SOCR Body Density Data set used in this research only includes male data and has a relatively small sample size. This limitation restricts the external validity of the model and may not be generalizable to female or other gender groups. Additionally, a smaller sample size may make the model sensitive to outliers or noise in the data.
+
+3. **Data Source Limitations**:
+   The BodyFat data from BYU Human Performance Research Center originates from specific experimental conditions and measurement methods, which may not represent the body measurement characteristics of the general population. Different data collection standards, environments, or tools may lead to measurement errors, potentially impacting the model's predictive accuracy.
+
+4. **Potential Confounding Factors**:
+   Other uncontrolled variables in the experiment, such as lifestyle, dietary habits, and exercise levels, could influence body fat percentage. However, these factors were not included in the model, possibly leading to insufficient predictive power.
+
+5. **Challenges in Interpreting Feature Importance**:
+   While non-parametric models like Random Forest can achieve high predictive performance, their "black box" nature makes it difficult to accurately interpret the impact of each variable on body fat percentage.
+
+6. **Impact of Measurement Errors**:
+   Measurements of weight, circumference, and other variables in the dataset may contain errors, which can affect the model. Especially, derived variables like BMI and waist-to-hip ratio also rely on these measurements, and measurement errors can accumulate, further affecting model performance.
+
+7. **Standards for Measuring Body Fat Percentage**:
+   The body fat percentage used was derived from Siri's equation rather than through direct methods like DXA scanning or other more accurate techniques. This may introduce computational errors that affect the model's accurate predictions of body fat.
+
+8. **Lack of Time Dimension**:
+   The dataset does not include temporal information, preventing the capture of dynamic changes in individuals' body composition. Future studies could benefit from incorporating longitudinal data to capture trends in body fat changes rather than just static predictions.
+
+## Future Directions:
+
+1. **Incorporating More Nonlinear Models**:
+   Future studies could explore the use of more complex nonlinear models, such as neural networks or support vector machines, to better capture nonlinear relationships in body measurement data. These models may handle the interactions between complex physiological features better than linear regression or Random Forest.
+
+2. **Increasing Sample Diversity**:
+   Future research should expand the sample range to include individuals of different genders, age groups, and body types. This would enhance the external validity of the model, allowing it to perform well across a broader population.
+
+3. **Controlling Other Potential Influencing Factors**:
+   Important factors influencing body fat, such as lifestyle, exercise habits, and diet, can be incorporated into the model to improve predictive accuracy and interpretability. This would help build a more comprehensive predictive model and reduce interference from other factors.
+
+4. **Exploring Interaction Effects**:
+   In addition to examining the impact of individual variables, future research could explore interactions between different variables. For instance, there may be complex interactions between BMI and age, or waist-to-hip ratio and weight, which could further enhance the model's predictive accuracy for body fat percentage.
+
+5. **Model Ensemble Techniques**:
+   Combining different types of models (e.g., linear models, decision trees, neural networks) to create ensemble models may improve overall predictive performance. Model ensembles can leverage the strengths of multiple models, reducing the limitations of any single model and enhancing adaptability to different data distributions.
+
+6. **Improving Data Collection and Processing**:
+   Future studies should enhance data collection methods, using more precise body fat measurement tools (e.g., DXA scanning) and standardized measurement protocols to improve model accuracy. Additionally, effectively handling outliers and missing values in the data can further enhance the stability and predictive performance of the model.

@@ -1,0 +1,16 @@
+---
+title: "Assignment2"
+format: html
+editor: visual
+---
+
+
+
+```{r}
+data <- read.delim('bodyfat.txt')
+```
+
+```{r}
+data
+```
+

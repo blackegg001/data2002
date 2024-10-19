@@ -1,0 +1,409 @@
+---
+title: "Assignment 2"
+subtitle: "Group L01G02"
+author: "Tyler Sitchon, Ethan Cunanan, Johan Kok, Tingwei Liang and Jerry Jin"
+format: 
+  revealjs:
+    auto-slide: 20000
+    embed-resources: true
+---
+
+```{r, results='hide', warning=FALSE, message=FALSE}
+library(tidyverse)
+library(knitr)
+
+data = read.table("bodyfat.txt", header = TRUE, sep = "\t") 
+```
+
+## Introduction
+
+Aim: Determine if there is a model to conveniently measure body fat percent at home
+
+![](food.jpg){width="405"}
+
+## Data Description
+
+::: {.center}
+**Dataset Source**:  
+- Sourced from BYU Human Performance Research Center  
+- Directed by Mark Ricard
+:::
+
+![](variableTable.png){fig-align="center"}
+
+
+
+## Data Wrangling: BF Percent
+
+```{r, fig.width=5, fig.height=2}
+library(ggplot2)
+
+ggplot(data, aes(x = Density, y = Pct.BF)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Density vs Pct.BF",
+       x = "Density",
+       y = "Pct.BF") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_brewer(palette="Pastel1")
+```
+
+**Reducing Outliers**
+
+Siri equation
+
+$$
+Pct.BF = \frac{495}{density} - 450
+$$
+
+```{r}
+data$Predicted_Pct_BF <- round(495 / data$Density - 450, 2)
+
+
+data$Pct.BF <- ifelse(data$Predicted_Pct_BF != round(data$Pct.BF, 2),
+                      data$Predicted_Pct_BF,
+                      data$Pct.BF)
+
+data$Predicted_Pct_BF <- NULL
+```
+
+## Wrangling cont.
+
+**Incorrect Results**
+
+-   Body density of the human body typically falls within the range of 0.900 to 1.100 g/cm³ (Jackson & Pollock, 2007)
+
+```{r}
+data <- data[data$Density >= 0.900 & data$Density <= 1.100, ]
+```
+
+```{r}
+ggplot(data, aes(x = Density, y = Pct.BF)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(title = "Density vs Pct.BF",
+       x = "Density",
+       y = "Pct.BF") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_fill_brewer(palette="Pastel1")
+```
+
+## Exploratory Data Analysis: Scatter plots
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+plots <- list()
+
+variables <- c("Age", "Weight", "Height", "Neck", "Chest",
+               "Abdomen", "Waist", "Hip", "Thigh", "Knee",
+               "Ankle", "Bicep", "Forearm", "Wrist")
+
+for (var in variables) {
+  p <- ggplot(data, aes_string(x = var, y = "Pct.BF")) +
+    geom_point(alpha = 0.6) +
+    geom_smooth(method = "lm", se = FALSE) +
+    labs(x = var,
+         y = "Pct.BF") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5))
+  plots[[var]] <- p
+}
+
+grid.arrange(grobs = plots, ncol = 5)
+```
+
+## Exploratory Data Analysis: Correlation Analysis
+
+```{r}
+library(ggplot2)
+library(reshape2)
+
+cor_matrix <- cor(data, use = "complete.obs")
+
+melted_cor_matrix <- melt(cor_matrix)
+
+ggplot(data = melted_cor_matrix, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+                       midpoint = 0, limit = c(-1, 1), space = "Lab",
+                       name = "Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1,
+                                   size = 10, hjust = 1)) +
+  coord_fixed() +
+  geom_text(aes(Var1, Var2, label = sprintf("%.2f", round(value, 2))),
+            color = "black", size = 2) +
+  labs(x = '', y = '') 
+```
+
+## Checking Assumptions: Multicollinearity
+
+```{r}
+library(car)
+
+data <- data[, !names(data) %in% "Abdomen"]
+
+model <- lm(Pct.BF ~ ., data = data)
+
+vif_values1 <- vif(model)
+
+vif_df1 <- data.frame(Variable = names(vif_values1), VIF = vif_values1)
+
+ggplot(vif_df1, aes(x = reorder(Variable, VIF), y = VIF)) +
+  geom_bar(stat = "identity", fill = "#519DE9") +
+  coord_flip() +
+  labs(title = "Variance Inflation Factors (VIF)",
+       x = "Predictor Variable",
+       y = "VIF Value") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Checking Assumptions: Homoscedacity and Normality
+
+Residual plots
+
+```{r}
+library(caret)
+
+data_test1 <- data %>% select(-Density)
+
+model <- lm(Pct.BF ~ ., data = data_test1)
+```
+
+```{r}
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+## Stepwise Regression and Stepwise Subset Selection
+### Model 1 - Bidirectional
+### Model 2 - Backwards
+### Model 3 - Forwards
+
+
+
+```{r, results='hide'}
+lm_model <- lm(Pct.BF ~ ., data = data_test1)
+```
+
+```{r, results='hide'}
+stepwise_model_both <- step(lm_model, direction = "both",
+                       trace = 0)
+summary(stepwise_model_both)
+```
+
+```{r, results='hide'}
+stepwise_model_backward <- step(lm_model, direction = "backward",
+                       trace = 0)
+
+summary(stepwise_model_backward)
+```
+
+```{r, results='hide'}
+stepwise_model_forward <- step(lm_model, direction = "forward",
+                       trace = 0)
+
+summary(stepwise_model_forward)
+```
+
+## Cross Validation 
+![](stepwise_summary.png){fig-align="center"}
+
+## Cross Validation Results
+
+```{r}
+set.seed(123)
+
+rmse <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+r_squared <- function(actual, predicted) {
+  1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+}
+
+relative_rmse <- function(actual, rmse_value) {
+  rmse_value / mean(actual) * 100
+}
+
+# 10-fold cross validation
+cross_validate_model <- function(model_formula, data) {
+  control <- trainControl(method = "cv", number = 10)
+
+  # Perform cross-validation
+  cv_model <- train(model_formula, data = data, method = "lm",
+                    trControl = control)
+
+  # Get resampling results
+  resamples <- cv_model$resample
+
+  # Calculate RMSE, R², and Relative RMSE
+  rmse_value <- mean(resamples$RMSE)
+  r2_value <- mean(resamples$Rsquared)
+  rel_rmse_value <- relative_rmse(data$Pct.BF, rmse_value)
+
+  return(list(RMSE = rmse_value, R_squared = r2_value, Relative_RMSE = rel_rmse_value))
+}
+
+results_both <- cross_validate_model(as.formula(stepwise_model_both$call), data_test1)
+results_backward <- cross_validate_model(as.formula(stepwise_model_backward$call), data_test1)
+results_forward <- cross_validate_model(as.formula(stepwise_model_forward$call), data_test1)
+```
+
+```{r}
+
+results_df <- data.frame(
+  Model = c("Bidirectional", "Backward", "Forward"),
+  RMSE = c(results_both$RMSE, results_backward$RMSE, results_forward$RMSE),
+  R_squared = c(results_both$R_squared, results_backward$R_squared, results_forward$R_squared),
+  Relative_RMSE = c(results_both$Relative_RMSE, results_backward$Relative_RMSE, results_forward$Relative_RMSE)
+)
+
+# Display the results as a table
+kable(results_df, format = "html", caption = "Comparison of Stepwise Regression Models")
+```
+
+## Generalized Least Squares (GLS)
+
+### Overview of GLS
+
+- **Purpose**: GLS accounts for heteroscedasticity and Multicollinearity, providing more reliable estimates when these issues are present.
+
+<!-- ## Generalised Least Squares: Residual Analysis -->
+
+```{r, results='hide'}
+library(nlme)
+
+formula <- Pct.BF ~ Age + Weight + Height + Neck + Chest +
+    Waist + Hip + Thigh + Knee + Ankle + Bicep + Forearm + Wrist
+
+# Fit a GLS model to address heteroscedasticity
+gls_model <- gls(formula, data = data_test1)
+summary(gls_model)
+```
+
+```{r, results='hide'}
+
+std_residuals <- residuals(gls_model, type = "normalized")
+std_residuals_summary <- summary(std_residuals)
+
+std_residuals_df <- data.frame(
+  Statistic = c("Min", "1st Quartile", "Median", "3rd Quartile", "Max"),
+  Value = as.numeric(std_residuals_summary[c(1, 2, 3, 5, 6)])
+)
+
+kable(std_residuals_df, format = "html", caption = "Standardized Residuals Summary")
+
+cat("AIC: ", AIC(gls_model), " BIC: ", BIC(gls_model), " Residual standard error: 4.341277")
+```
+
+## Generalised Least Squares: Performance Analysis
+
+```{r}
+# Prediction function
+predict_gls <- function(model, new_data) {
+  # Make predictions
+  predictions <- predict(model, newdata = new_data)
+  return(predictions)
+}
+
+# Make predictions
+predictions <- predict_gls(gls_model, data_test1)
+
+# Calculate evaluation metrics
+rmse_value <- rmse(data_test1$Pct.BF, predictions)
+rel_rmse_value <- relative_rmse(data_test1$Pct.BF, rmse_value)
+r2_value <- r_squared(data_test1$Pct.BF, predictions)
+
+performance_df <- data.frame(
+  Statistic = c("RMSE", "Relative RMSE", "R Squared"),
+  Value = c(rmse_value, rel_rmse_value, r2_value)
+)
+
+kable(performance_df, format = "html", caption = "Performance Metrics")
+```
+
+## Bootstrapping
+
+### Overview 
+
+- **Purpose**: Bootstrapping is a resampling technique that generates an empirical distribution of estimated parameters by repeatedly sampling from the original dataset.
+
+## Bootstrapping
+### Discussion of Results
+![](boot.png){fig-align="center"}
+
+## Derived Variables
+
+-   We would also like to investigate the effectiveness of using common measurements derived from the variables in our models
+
+Body Mass Index (BMI) where:
+
+$$
+\text{BMI} = \frac{\text{Weight(lb)}}{\text{Height(inches)}} \cdot 703
+$$
+
+Waist-Hip Ratio (WHR) where:
+
+$$
+\text{WHR} = \frac{\text{Waist Circumference}}{\text{Hip Circumference}}
+$$
+
+<!-- ## Exploratory Analysis-->
+
+```{r, results='hide'}
+data2 <- data %>%
+  mutate(
+    BMI = (Weight * 703) / (Height^2),
+    WHR = Waist / Hip,
+  )%>%
+  select(-Weight, -Height, -Waist, -Hip)
+```
+
+```{r, results='hide'}
+library(car)
+model2 <- lm(Pct.BF ~ ., data = data2)
+
+vif_values2 <- vif(model2)
+
+vif_df2 <- data.frame(Variable = names(vif_values2), VIF = vif_values2)
+
+ggplot(vif_df2, aes(x = reorder(Variable, VIF), y = VIF)) +
+  geom_bar(stat = "identity", fill = "#519DE9") +
+  coord_flip() +
+  labs(title = "Variance Inflation Factors (VIF)",
+       x = "Predictor Variable",
+       y = "VIF Value") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+## Comparing Model Performance
+
+![](comparev2.png){fig-align="center"}
+
+## Limitations
+
+### 1. Sample Representativeness Issues
+
+### 2. Potential Confounding Factors
+
+### 3. Assumption of Linearity
+
+## Further Directions
+
+### 1. Incorporating More Nonlinear Models
+
+### 2. Increasing Sample Diversity
+
+### 3. Model Ensemble Techniques
+
+
+

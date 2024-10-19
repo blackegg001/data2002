@@ -1,0 +1,186 @@
+---
+title: "pres"
+format: html
+editor: visual
+---
+
+```{r}
+library(readr)
+library(tidyverse)
+bodyfat <- read_table("~/Downloads/bodyfat.txt")
+```
+
+```{r}
+#Linearity
+
+model1 = lm(formula = Pct.BF ~ Weight, data = bodyfat)
+model1$coefficients
+summary(model1)
+
+ggplot(bodyfat, aes(x=Weight, y = Pct.BF))+geom_point() + 
+  geom_smooth(data= bodyfat, method = 'lm', aes(x=Weight,y=Pct.BF),se = FALSE, color = 'red')
+
+#bodyfat uses pounds/inches
+bodyfat = bodyfat %>% mutate(BMI = 703*Weight/(Height^2))
+
+model2 = lm(Pct.BF ~ BMI, bodyfat)
+summary(model2)
+
+ggplot(bodyfat, aes(x=BMI, y = Pct.BF))+geom_point() + 
+  geom_smooth(data= bodyfat, method = 'lm', aes(x=BMI,y=Pct.BF),se = FALSE)
+
+```
+
+```{r}
+#Normality
+bodyfat = bodyfat %>% mutate(resid1 = resid(model1)) %>% mutate(resid2 = resid(model2))
+bodyfat %>% ggplot() + 
+  aes(sample = resid1) +
+  geom_qq(size = 2) + 
+  geom_qq_line() + 
+  ggtitle("Model 1 qq-plot") +
+  ylab("Residuals")
+
+bodyfat %>% ggplot() + 
+  aes(sample = resid2) +
+  geom_qq(size = 2) + 
+  geom_qq_line() +
+  ggtitle("Model 2 qq-plot") +
+  ylab("Residuals")
+```
+
+```{r}
+#Homoskedascity
+ggplot(model1, aes(x=.fitted,y=.resid)) + geom_point() + geom_hline(yintercept = 0,color = 'red')
+
+ggplot(model2,aes(x=.fitted,y=.resid)) + geom_point() + geom_hline(yintercept = 0,color = 'blue')
+```
+
+```{r}
+resid1 = as.data.frame(resid(model1))
+colnames(resid1) = c("Residuals")
+
+resid2 = as.data.frame(resid(model2))
+colnames(resid2) = c("Residuals")
+```
+
+```{r}
+#Multiple Reg
+bodyfat2 = bodyfat[,c(-1,-4,-5,-18,-19)]
+null_model = lm(Pct.BF ~ 1, bodyfat2)
+full_model = lm(Pct.BF ~ ., bodyfat2)
+
+fstep = step(null_model, scope = list(lower = null_model, upper = full_model), direction = "forward")
+model_fs = fstep$call
+
+bstep = step(full_model, scope = list(lower = null_model, upper = full_model), direction = "backward")
+model_bs = bstep$call
+
+```
+
+```{r}
+library(leaps)
+exh_search = regsubsets(Pct.BF ~ ., data = bodyfat2[,c(-5,-6)])
+summary(exh_search)
+model_ex = lm(Pct.BF ~ Age + Neck + Chest + Hip + Thigh + Knee + Wrist + BMI, bodyfat2)
+```
+
+```{r}
+#| warning: false
+#| message: false
+#CrossVal
+library(caret)
+library(gt)
+set.seed(196)
+ctrl = trainControl(method = "cv",number = 10)
+
+fs_cv = train(as.formula(model_fs), data = bodyfat, method = "lm", trControl = ctrl)
+bs_cv = train(as.formula(model_bs), data = bodyfat, method = "lm", trControl = ctrl)
+ex_cv = train(as.formula(model_ex), data = bodyfat, method = "lm", trControl = ctrl)
+
+f_rmse = mean(fs_cv$resample$RMSE)
+b_rmse = mean(bs_cv$resample$RMSE)
+e_rmse = mean(ex_cv$resample$RMSE)
+
+modnames = c("Forward stepwise", "Backward stepwise", "Exhaustive")
+rmse_list = c(f_rmse, b_rmse, e_rmse)
+
+```
+
+```{r}
+rm_df = data.frame(modnames,rmse_list)
+colnames(rm_df) = c("Method of feature selection","Average RMSE from resamples")
+rm_df |> gt() |>
+  tab_header(title = "Cross validation of multiple regression formulas")
+```
+
+
+```{r}
+library(olsrr)
+library(corrplot)
+
+bs_preds = names(bstep$coefficients)[-1]
+fs_preds = names(fstep$coefficients)[-1]
+
+b_body_filt = bodyfat %>% subset(select = bs_preds)
+f_body_filt = bodyfat %>% subset(select = fs_preds)
+
+bcormat = cor(b_body_filt)
+fcormat = cor(f_body_filt)
+
+corrplot(bcormat, method = "number", type = "upper", diag = FALSE)
+mtext("Backward stepwise model's coefficients' correlation", side = 1, line = 3, adj = 0)
+
+corrplot(fcormat, method = "number", type = "upper", diag = FALSE)
+mtext("Forward stepwise model's coefficients' correlation", side = 1, line = 3, adj = 0)
+```
+The backwards stepwise model has three pairs of predictors with correlation coefficients greater than 0.9: Chest ~ Abdomen, Chest ~ BMI, and Abdomen ~ BMI.
+
+The forwards stepwise model has also three pairs with correlation coefficients > 0.9: Waist ~ BMI, Waist ~ Chest, and Chest ~ BMI.
+
+Both use Age, Neck, Chest, Hip, Wrist, and BMI.
+Backwards includes Abdomen and Forearm, while Forwards includes Waist and Bicep. 
+
+I'd recommend using Forwards then because people are more familiar with measuring their waist than their abdomen.
+
+```{r}
+#homo + normal for the residuals
+ggplot(fstep,mapping=aes(.fitted,.resid))+geom_point() + geom_hline(yintercept = 0, color = "green")
+
+residf = summary(fstep)$residuals
+bodyfat %>% ggplot() + 
+  aes(sample = residf) +
+  geom_qq(size = 2) + 
+  geom_qq_line() +
+  ggtitle("Model 3  qq-plot") +
+  ylab("Residuals")
+```
+
+
+
+
+```{r}
+#Compare r-squared values
+frsq = summary(fstep)$r.squared
+m1rsq = summary(model1)$r.squared
+m2rsq = summary(model2)$r.squared
+
+finmodnames = c("Model 1", "Model 2", "Model 3")
+rsqlist = c(m1rsq,m2rsq,frsq)
+rsqdf = data.frame(finmodnames, rsqlist)
+colnames(rsqdf) = c("Models", "R-squared")
+rsqdf %>% gt()
+```
+
+If we remove BMI, Hip and Chest as predictors, we won't have any predictors with a correlation coefficient > 0.8
+```{r}
+editedmodel = lm(Pct.BF ~ Waist + Wrist + Age + Neck + Bicep, bodyfat)
+edrsq = summary(editedmodel)$r.squared
+editedmodel$coefficients
+print("New model's R-squared:")
+edrsq
+print("Original - New R-squared:")
+frsq - edrsq
+```
+
+It's only slightly less accurate, and in exchange the multicollinearity has been reduced. Granted, we still have many predictor pairs which have correlation coefficients above 0.7, but that's simply the nature of the measurements we have. Ultimately, the model just needs to predict bodyfat percentage well. How it

@@ -1,0 +1,51 @@
+---
+title: "Insert title"
+author: "Insert authors"
+format: revealjs
+editor: visual
+theme: simple
+---
+
+## 1 Predicting bodyfat (let's remove the numbers once we're done.)
+
+::: notes
+Notes: cardiovascular diseases, diabetes Mention examples of measurements we used Add pictures!
+:::
+
+-   Excess bodyfat creates health problems
+-   Predictive model using other body measurements
+
+## 2 Why?
+
+-   Measurement usually requires:
+    -   Specialised equipment
+    -   High precision
+
+![](Water-Displacement.png){width="269"}![](Body-Composition-Testing.jpg){width="404"}
+
+## 3 Dataset
+
+-   Source? (BYU but just be specific)
+
+-   Units of measurement (I think it's imperial but we can discuss this)
+
+-   Only includes adult males
+
+```{r}
+library(readr)
+library(tidyverse)
+bodyfat <- read_table("~/Downloads/bodyfat.txt")
+```
+
+## 4 Game Plan
+
+:::{.notes}
+mention that we derived BMI from the measurements
+mention BMI is the rule of thumb
+:::
+
+-   Single linear regressions
+    -   Model 1: Weight, Model 2: BMI
+-   Multiple linear regression
+    - Different methods of feature selection
+-   Compare R-squared values at the end
